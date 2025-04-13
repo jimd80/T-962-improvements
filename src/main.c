@@ -337,6 +337,7 @@ static int32_t Main_Work(void) {
 
 		// Leave setup
 		if (keyspressed & KEY_S) {
+            Sensor_ValidateNV(); // reload tc corrections
 			mode = MAIN_HOME;
 			Reflow_SetMode(REFLOW_STANDBY);
 			retval = 0; // Force immediate refresh
@@ -560,7 +561,8 @@ static int32_t Main_Work(void) {
 		if (keyspressed & KEY_S) {
 			printf("\nEnd bake mode by keypress\n");
 
-			mode = MAIN_HOME;
+			timer = 0; // Reset for next time
+            mode = MAIN_HOME;
 			Reflow_SetBakeTimer(0);
 			Reflow_SetMode(REFLOW_STANDBY);
 			retval = 0; // Force immediate refresh
