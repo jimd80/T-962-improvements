@@ -22,7 +22,7 @@ from time import time
 #
 FIELD_NAMES = 'Time,Temp0,Temp1,Temp2,Temp3,Set,Actual,Heat,Fan,ColdJ,Mode'
 TTYs = ('/dev/ttyUSB0', '/dev/ttyUSB1', '/dev/ttyUSB2')
-BAUD_RATE = 115200
+BAUD_RATE = 57600
 
 logdir = 'logs/'
 

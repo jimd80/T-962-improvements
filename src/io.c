@@ -170,7 +170,8 @@ void IO_Init(void) {
 
 	FIO0PIN = 0x00; // Turn LED on and make PWM outputs active when in GPIO mode (to help 100% duty cycle issue)
 
-	PWMPR = PCLKFREQ / (256 * 5); // Let's have the PWM perform 5 cycles per second with 8 bits of precision (way overkill)
+	PWMPR = PCLKFREQ / (256 * 2); // Let's have the PWM perform 2 cycles per second with 8 bits of precision (way overkill)
+	//PWMPR = PCLKFREQ / (256 * 5); // Let's have the PWM perform 5 cycles per second with 8 bits of precision (way overkill)
 	PWMMCR = (1<<1); // Reset TC on mr0 overflow (period time)
 	PWMMR0 = 0xff; // Period time
 	PWMLER = (1<<0); // Enable latch on mr0 (Do I really need to do this?)

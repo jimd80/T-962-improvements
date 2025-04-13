@@ -17,6 +17,30 @@
  * along with this program.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+ /*
+ Jim Mods:
+   - Added vscode files and flash script
+   - Bugfix: tc offset and gain only effective after start reflow / reset
+   - Bugfix: manual mode not reset after re-entry (pressed stop)
+   - Bugfix: setting TC gain <= -10 causes crash (reboot) due to format (use 00.0 instead of 0.00)
+   - Improvement: Slower 230v pwm (fan+heat) 2 Hz instead of 5 Hz for less net noise
+   - Improvement: show TC temp during setup for easier tuning of tc gain and offset
+   - Improvement: TC gain extended to -50..+50 instead of -25..+25
+   - Improvement: Bake mode goes back to preheat if regulation is 1 degree off. Changes to 5 degrees to allow some regulation swing
+   - Visual: Use same font in bitmaps (especially smaller S-button)
+   - Visual: Renamed thermocouple R to FNT (front) and L to BCK (back) and cold juction to PCB
+   - Visual: Renamed RUN to SEC in reflow screen
+   - Visual: Renamed manual/bake mode to manual
+   - Visual: Added : between temperature label/value
+   - Visual: Replaced < > to up and down arrow
+   - Visual: Removed dots in graps (looks more clear, personal preference)
+   - Visual: Added "degrees c" and "s" labels
+   - Added popular Chipquick profiles (TS series, without need for refridgeration)
+   - Visual: Removed [S] from about screen
+   - Serial interface 57600 baud instead of 115200 to allow one tool for flashing and terminal using same baud rate
+   - Visual: custom logo
+ */
+
 #include "LPC214x.h"
 #include <stdint.h>
 #include <stdio.h>
@@ -50,7 +74,7 @@ extern uint8_t f3editbmp[];
 
 // No version.c file generated for LPCXpresso builds, fall back to this
 __attribute__((weak)) const char* Version_GetGitVersion(void) {
-	return "no version info";
+	return "v0.5.2d"; // d = d2s modified version with chipquick profiles
 }
 
 static char* format_about = \
@@ -311,9 +335,11 @@ static int32_t Main_Work(void) {
 
 		if (keyspressed & KEY_F3) {
 			Setup_decreaseValue(selected, keyrepeataccel);
-		}
-		if (keyspressed & KEY_F4) {
+            Sensor_ValidateNV(); // allow immediate update of displayed temperature
+        }
+        if (keyspressed & KEY_F4) {
 			Setup_increaseValue(selected, keyrepeataccel);
+            Sensor_ValidateNV(); // allow immediate update of displayed temperature
 		}
 
 		LCD_FB_Clear();
@@ -327,19 +353,26 @@ static int32_t Main_Work(void) {
 			y += 7;
 		}
 
+        // current temp
+		len = snprintf(buf, sizeof(buf), "BCK:%3.1f`", Sensor_GetTemp(TC_LEFT));
+		LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
+		len = snprintf(buf, sizeof(buf), "FNT:%3.1f`", Sensor_GetTemp(TC_RIGHT));
+		LCD_disp_str((uint8_t*)buf, len, LCD_CENTER, y, FONT6X6);
+
+
 		// buttons
 		y = 64 - 7;
-		LCD_disp_str((uint8_t*)" < ", 3, 0, y, FONT6X6 | INVERT);
-		LCD_disp_str((uint8_t*)" > ", 3, 20, y, FONT6X6 | INVERT);
+		LCD_disp_str((uint8_t*)" \x7E ", 3, 0, y, FONT6X6 | INVERT); //  /\ <
+		LCD_disp_str((uint8_t*)" \x7F ", 3, 20, y, FONT6X6 | INVERT); // \/  >
 		LCD_disp_str((uint8_t*)" - ", 3, 45, y, FONT6X6 | INVERT);
 		LCD_disp_str((uint8_t*)" + ", 3, 65, y, FONT6X6 | INVERT);
 		LCD_disp_str((uint8_t*)" DONE ", 6, 91, y, FONT6X6 | INVERT);
 
 		// Leave setup
 		if (keyspressed & KEY_S) {
-			Sensor_ValidateNV(); // reload tc corrections
-			mode = MAIN_HOME;
-			Reflow_SetMode(REFLOW_STANDBY);
+            Sensor_ValidateNV(); // reload tc corrections
+            mode = MAIN_HOME;
+            Reflow_SetMode(REFLOW_STANDBY);
 			retval = 0; // Force immediate refresh
 		}
 	} else if (mode == MAIN_ABOUT) {
@@ -352,7 +385,7 @@ static int32_t Main_Work(void) {
 		len = snprintf(buf, sizeof(buf), "%s", Version_GetGitVersion());
 		LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), 64 - 6, FONT6X6);
 
-		LCD_BMPDisplay(stopbmp, 127 - 17, 0);
+		//LCD_BMPDisplay(stopbmp, 127 - 17, 0);
 
 		// Leave about with any key.
 		if (keyspressed & KEY_ANY) {
@@ -371,7 +404,7 @@ static int32_t Main_Work(void) {
 		LCD_disp_str((uint8_t*)buf, len, 110, 26, FONT6X6);
 
 		len = snprintf(buf, sizeof(buf), "%03u", (unsigned int)ticks);
-		LCD_disp_str((uint8_t*)"RUN", 3, 110, 33, FONT6X6);
+		LCD_disp_str((uint8_t*)"SEC", 3, 110, 33, FONT6X6);
 		LCD_disp_str((uint8_t*)buf, len, 110, 39, FONT6X6);
 
 		// Abort reflow
@@ -404,7 +437,7 @@ static int32_t Main_Work(void) {
 		LCD_BMPDisplay(selectbmp, 127 - 17, 0);
 		int eeidx = Reflow_GetEEProfileIdx();
 		if (eeidx) { // Display edit button
-			LCD_BMPDisplay(f3editbmp, 127 - 17, 29);
+			LCD_BMPDisplay(f3editbmp, 127 - 17, 28);
 		}
 		len = snprintf(buf, sizeof(buf), "%s", Reflow_GetProfileName());
 		LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
@@ -423,7 +456,7 @@ static int32_t Main_Work(void) {
 
 	} else if (mode == MAIN_BAKE) {
 		LCD_FB_Clear();
-		LCD_disp_str((uint8_t*)"MANUAL/BAKE MODE", 16, 0, 0, FONT6X6);
+		LCD_disp_str((uint8_t*)"MANUAL MODE", 11, 0, 0, FONT6X6);
 
 		int keyrepeataccel = keyspressed >> 17; // Divide the value by 2
 		if (keyrepeataccel < 1) keyrepeataccel = 1;
@@ -468,7 +501,7 @@ static int32_t Main_Work(void) {
 			LCD_disp_str((uint8_t*)"F2", 2, LCD_ALIGN_RIGHT(2), y, FONT6X6 | INVERT);
 			f2function = '+';
 		}
-		len = snprintf(buf, sizeof(buf), "%c SETPOINT %d` %c", f1function, (int)setpoint, f2function);
+		len = snprintf(buf, sizeof(buf), "%c SETPOINT:%d` %c", f1function, (int)setpoint, f2function);
 		LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), y, FONT6X6);
 
 
@@ -500,38 +533,34 @@ static int32_t Main_Work(void) {
 			LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_RIGHT(len), y, FONT6X6);
 		}
 
-		len = snprintf(buf, sizeof(buf), "ACT %3.1f`", Sensor_GetTemp(TC_AVERAGE));
+		len = snprintf(buf, sizeof(buf), "ACT:%3.1f`", Sensor_GetTemp(TC_AVERAGE));
 		LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
 
 		y = 34;
-		len = snprintf(buf, sizeof(buf), "  L %3.1f`", Sensor_GetTemp(TC_LEFT));
+		len = snprintf(buf, sizeof(buf), "BCK:%3.1f`", Sensor_GetTemp(TC_LEFT));
 		LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
-		len = snprintf(buf, sizeof(buf), "  R %3.1f`", Sensor_GetTemp(TC_RIGHT));
+		len = snprintf(buf, sizeof(buf), "FNT:%3.1f`", Sensor_GetTemp(TC_RIGHT));
 		LCD_disp_str((uint8_t*)buf, len, LCD_CENTER, y, FONT6X6);
 
 		if (Sensor_IsValid(TC_EXTRA1) || Sensor_IsValid(TC_EXTRA2)) {
 			y = 42;
 			if (Sensor_IsValid(TC_EXTRA1)) {
-				len = snprintf(buf, sizeof(buf), " X1 %3.1f`", Sensor_GetTemp(TC_EXTRA1));
+				len = snprintf(buf, sizeof(buf), " X1:%3.1f`", Sensor_GetTemp(TC_EXTRA1));
 				LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
 			}
 			if (Sensor_IsValid(TC_EXTRA2)) {
-				len = snprintf(buf, sizeof(buf), " X2 %3.1f`", Sensor_GetTemp(TC_EXTRA2));
+				len = snprintf(buf, sizeof(buf), " X2:%3.1f`", Sensor_GetTemp(TC_EXTRA2));
 				LCD_disp_str((uint8_t*)buf, len, LCD_CENTER, y, FONT6X6);
 			}
 		}
 
-		y = 50;
-		len = snprintf(buf, sizeof(buf), "COLDJUNCTION");
-		LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
-
-		y += 8;
 		if (Sensor_IsValid(TC_COLD_JUNCTION)) {
-			len = snprintf(buf, sizeof(buf), "%3.1f`", Sensor_GetTemp(TC_COLD_JUNCTION));
+			len = snprintf(buf, sizeof(buf), "PCB:%3.1f`", Sensor_GetTemp(TC_COLD_JUNCTION));
 		} else {
-			len = snprintf(buf, sizeof(buf), "NOT PRESENT");
+			len = snprintf(buf, sizeof(buf), "PCB SENS NOT PRESENT");
 		}
-		LCD_disp_str((uint8_t*)buf, len, (12 * 6) - (len * 6), y, FONT6X6);
+		y = 50;
+		LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
 
 		LCD_BMPDisplay(stopbmp, 127 - 17, 0);
 
@@ -561,9 +590,9 @@ static int32_t Main_Work(void) {
 		if (keyspressed & KEY_S) {
 			printf("\nEnd bake mode by keypress\n");
 
-			timer = 0; // Reset for next time
-			mode = MAIN_HOME;
-			Reflow_SetBakeTimer(0);
+            timer = 0; // Reset for next time
+            mode = MAIN_HOME;
+            Reflow_SetBakeTimer(0);
 			Reflow_SetMode(REFLOW_STANDBY);
 			retval = 0; // Force immediate refresh
 		}
@@ -617,11 +646,11 @@ static int32_t Main_Work(void) {
 		LCD_disp_str((uint8_t*)"F2", 2, 0, 8 * 2, FONT6X6 | INVERT);
 		LCD_disp_str((uint8_t*)"SETUP", 5, 14, 8 * 2, FONT6X6);
 		LCD_disp_str((uint8_t*)"F3", 2, 0, 8 * 3, FONT6X6 | INVERT);
-		LCD_disp_str((uint8_t*)"BAKE/MANUAL MODE", 16, 14, 8 * 3, FONT6X6);
+		LCD_disp_str((uint8_t*)"MANUAL MODE", 11, 14, 8 * 3, FONT6X6);
 		LCD_disp_str((uint8_t*)"F4", 2, 0, 8 * 4, FONT6X6 | INVERT);
 		LCD_disp_str((uint8_t*)"SELECT PROFILE", 14, 14, 8 * 4, FONT6X6);
 		LCD_disp_str((uint8_t*)"S", 1, 3, 8 * 5, FONT6X6 | INVERT);
-		LCD_disp_str((uint8_t*)"RUN REFLOW PROFILE", 18, 14, 8 * 5, FONT6X6);
+		LCD_disp_str((uint8_t*)"RUN PROFILE", 11, 14, 8 * 5, FONT6X6);
 
 		len = snprintf(buf, sizeof(buf), "%s", Reflow_GetProfileName());
 		LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), 8 * 6, FONT6X6 | INVERT);

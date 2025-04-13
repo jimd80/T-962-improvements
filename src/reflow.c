@@ -225,7 +225,7 @@ void Reflow_SetBakeTimer(int seconds) {
 }
 
 int Reflow_IsPreheating(void) {
-	return bake_timer > 0 && avgtemp < (intsetpoint - 5); // allow 5 degrees swing margin
+	return bake_timer > 0 && avgtemp < (intsetpoint - 5); // allow 5 degrees swing margain
 }
 
 int Reflow_GetTimeLeft(void) {
