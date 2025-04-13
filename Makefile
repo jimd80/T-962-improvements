@@ -28,7 +28,8 @@ COLOR_RED = $(shell echo "\033[0;31m")
 COLOR_END = $(shell echo "\033[0m")
 
 # Source files
-C_SRCS += $(wildcard $(SRC_DIR)*.c) $(BUILD_DIR)version.c
+C_SRCS += $(wildcard $(SRC_DIR)*.c)
+#C_SRCS += $(wildcard $(SRC_DIR)*.c) $(BUILD_DIR)version.c
 
 S_SRCS += $(wildcard $(SRC_DIR)*.s)
 
@@ -79,6 +80,7 @@ post-build:
 	-arm-none-eabi-gcc --version
 	-arm-none-eabi-size "$(TARGET)";
 	-arm-none-eabi-objcopy -v -O ihex "$(TARGET)" "$(BUILD_DIR)$(BASE_NAME).hex"
+	-arm-none-eabi-objcopy -v -O binary "$(TARGET)" "$(BUILD_DIR)$(BASE_NAME).bin"
 	-@echo ' '
 
 lpc21isp: $(BUILD_DIR)tag

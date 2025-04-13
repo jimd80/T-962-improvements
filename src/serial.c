@@ -37,10 +37,10 @@
  * this works just fine! */
 #define BAUD_DL 1
 #else
-/* Settings for 115kbps */
+/* Settings for 57.6kbps */
 #define BAUD_M  1
 #define BAUD_D  0
-#define BAUD_DL 30
+#define BAUD_DL 60
 #endif
 
 /* UART Buffers */
