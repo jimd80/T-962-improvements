@@ -22,6 +22,7 @@ void Reflow_SetSetpoint(uint16_t thesetpoint);
 void Reflow_LoadSetpoint(void);
 int16_t Reflow_GetActualTemp(void);
 uint8_t Reflow_IsDone(void);
+uint8_t Reflow_IsRunning(void);
 int Reflow_IsPreheating(void);
 uint16_t Reflow_GetSetpoint(void);
 void Reflow_SetBakeTimer(int seconds);

@@ -28,17 +28,20 @@
    - Improvement: TC gain extended to -50..+50 instead of -25..+25
    - Improvement: Bake mode goes back to preheat if regulation is 1 degree off. Changes to 5 degrees to allow some regulation swing
    - Visual: Use same font in bitmaps (especially smaller S-button)
-   - Visual: Renamed thermocouple R to FNT (front) and L to BCK (back) and cold juction to PCB
-   - Visual: Renamed RUN to SEC in reflow screen
-   - Visual: Renamed manual/bake mode to manual
-   - Visual: Added : between temperature label/value
-   - Visual: Replaced < > to up and down arrow
-   - Visual: Removed dots in graps (looks more clear, personal preference)
-   - Visual: Added "degrees c" and "s" labels
+   - Visual: Removed dots in graph and added "degrees c" and "s" axis-labels (looks more clear, personal preference)
+   - Visual: Main: Renamed manual/bake mode to manual
+   - Visual: Setup: Replaced < > to up and down arrow
+   - Visual: Manual: Renamed thermocouple R to FNT (front) and L to BCK (back) and cold juction to PCB
+   - Visual: Manual: Added : between temperature label/value
+   - Visual: Reflow: Renamed RUN to TIME in reflow screen and put on top
+   - Visual: Reflow: added degrees symbol in act and set values,
+   - Visual: Reflow: Added progress bar,
    - Added popular Chipquick profiles (TS series, without need for refridgeration)
+   - keep reflow screen open when done to check chart
    - Visual: Removed [S] from about screen
    - Serial interface 57600 baud instead of 115200 to allow one tool for flashing and terminal using same baud rate
    - Visual: custom logo
+   - changed standby temp to 40 instead of 50 degrees
  */
 
 #include "LPC214x.h"
@@ -395,28 +398,49 @@ static int32_t Main_Work(void) {
 	} else if (mode == MAIN_REFLOW) {
 		uint32_t ticks = RTC_Read();
 
-		len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetSetpoint());
-		LCD_disp_str((uint8_t*)"SET", 3, 110, 7, FONT6X6);
-		LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
+        if (Reflow_IsRunning())
+        {
+		    len = snprintf(buf, sizeof(buf), "%3u", (unsigned int)ticks);
+		    LCD_disp_str((uint8_t*)"TIME", 4, 104, 7, FONT6X6);
+		    LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
 
-		len = snprintf(buf, sizeof(buf), "%03u", Reflow_GetActualTemp());
-		LCD_disp_str((uint8_t*)"ACT", 3, 110, 20, FONT6X6);
-		LCD_disp_str((uint8_t*)buf, len, 110, 26, FONT6X6);
+            len = snprintf(buf, sizeof(buf), "%3u`", Reflow_GetSetpoint());
+            LCD_disp_str((uint8_t*)"SET", 3, 110, 21, FONT6X6);
+            LCD_disp_str((uint8_t*)buf, len, 104, 27, FONT6X6);    
+        }
+        else
+        {
+		    LCD_disp_str((uint8_t*)"DONE", 4, 104, 7, FONT6X6);
+		    LCD_disp_str((uint8_t*)"    ", 4, 104, 13, FONT6X6);
 
-		len = snprintf(buf, sizeof(buf), "%03u", (unsigned int)ticks);
-		LCD_disp_str((uint8_t*)"SEC", 3, 110, 33, FONT6X6);
-		LCD_disp_str((uint8_t*)buf, len, 110, 39, FONT6X6);
+            len = snprintf(buf, sizeof(buf), "%3.0f`", Sensor_GetTemp(TC_COLD_JUNCTION));
+            LCD_disp_str((uint8_t*)"PCB", 3, 110, 21, FONT6X6);
+            LCD_disp_str((uint8_t*)buf, len, 104, 27, FONT6X6);    
+        }
+
+		len = snprintf(buf, sizeof(buf), "%3u`", Reflow_GetActualTemp());
+		LCD_disp_str((uint8_t*)"ACT", 3, 110, 35, FONT6X6);
+		LCD_disp_str((uint8_t*)buf, len, 104, 41, FONT6X6);
 
 		// Abort reflow
-		if (Reflow_IsDone() || keyspressed & KEY_S) {
-			printf("\nReflow %s\n", (Reflow_IsDone() ? "done" : "interrupted by keypress"));
-			if (Reflow_IsDone()) {
-				Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
-			}
+		if (keyspressed & KEY_S) {
+			printf("\nReflow interrupted by keypress\n");
 			mode = MAIN_HOME;
 			Reflow_SetMode(REFLOW_STANDBY);
 			retval = 0; // Force immediate refresh
 		}
+
+        // Reflow done
+		if (Reflow_IsDone()) {
+			printf("\nReflow done\n");
+		    Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
+			Reflow_SetMode(REFLOW_STANDBY);
+			retval = 0; // Force immediate refresh
+		}
+
+        len = snprintf(buf, sizeof(buf), "%s", Reflow_GetProfileName());
+        LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
+
 
 	} else if (mode == MAIN_SELECT_PROFILE) {
 		int curprofile = Reflow_GetProfileIdx();
@@ -649,7 +673,7 @@ static int32_t Main_Work(void) {
 		LCD_disp_str((uint8_t*)"MANUAL MODE", 11, 14, 8 * 3, FONT6X6);
 		LCD_disp_str((uint8_t*)"F4", 2, 0, 8 * 4, FONT6X6 | INVERT);
 		LCD_disp_str((uint8_t*)"SELECT PROFILE", 14, 14, 8 * 4, FONT6X6);
-		LCD_disp_str((uint8_t*)"S", 1, 3, 8 * 5, FONT6X6 | INVERT);
+		LCD_disp_str((uint8_t*)" S", 2, 0, 8 * 5, FONT6X6 | INVERT);
 		LCD_disp_str((uint8_t*)"RUN PROFILE", 11, 14, 8 * 5, FONT6X6);
 
 		len = snprintf(buf, sizeof(buf), "%s", Reflow_GetProfileName());

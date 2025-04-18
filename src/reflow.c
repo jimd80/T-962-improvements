@@ -32,7 +32,7 @@
 #include "reflow.h"
 
 // Standby temperature in degrees Celsius
-#define STANDBYTEMP (50)
+#define STANDBYTEMP (40)
 
 // 250ms between each run
 #define PID_TIMEBASE (250)
@@ -214,6 +214,10 @@ uint8_t Reflow_IsDone(void) {
 	return reflowdone;
 }
 
+uint8_t Reflow_IsRunning(void) {
+	return mymode == REFLOW_REFLOW;
+}
+
 uint16_t Reflow_GetSetpoint(void) {
 	return intsetpoint;
 }
@@ -281,7 +285,13 @@ int32_t Reflow_Run(uint32_t thetime, float meastemp, uint8_t* pheat, uint8_t* pf
 		int y = (uint16_t)(meastemp * 0.2f);
 		y = YAXIS - y;
 		LCD_SetPixel(realx, y);
-	}
+
+        // plot progress bar
+		LCD_SetPixel(realx, YAXIS - 1);
+		LCD_SetPixel(realx, YAXIS - 2);
+        if (((realx - XAXIS) % 12) == 0)
+		    LCD_SetPixel(realx, YAXIS - 3); // minute marks
+    }
 
 	PID.myInput = meastemp;
 	PID_Compute(&PID);
