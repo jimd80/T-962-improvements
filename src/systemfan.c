@@ -38,66 +38,88 @@
 #include "sched.h"
 #include "sensor.h"
 
-#define SYSFAN_PWM_PERIOD (TICKS_MS( 10 ))
+#define SYSFAN_PWM_PERIOD (TICKS_MS( 100 ))
 
 static uint32_t syspwmval = 0;
+static unsigned char sysfanFullspeed = 0;
+
+static void SystemFan_SetIO(unsigned char state) {
+    if (state)
+        FIO0SET = 1<<25; // SysFan on
+    else
+        FIO0CLR = 1<<25; // SysFan off
+}
 
 static int32_t SystemFanPWM_Work(void) {
 	static uint8_t state = 0;
-	int32_t retval;
+	int32_t retval = SYSFAN_PWM_PERIOD;
 
-	if (state) {
-		FIO0CLR = (syspwmval != SYSFAN_PWM_PERIOD) ? (1<<25) : 0; // SysFan off
-		retval = syspwmval ? (SYSFAN_PWM_PERIOD - syspwmval) : -1;
-	} else {
-		FIO0SET = syspwmval ? (1<<25) : 0; // SysFan on
-		retval = (syspwmval != SYSFAN_PWM_PERIOD) ? syspwmval : -1;
-	}
-	state ^= 1;
+    if (sysfanFullspeed || syspwmval >= SYSFAN_PWM_PERIOD)
+        SystemFan_SetIO(1);
+
+    else if (syspwmval <= 1)
+        SystemFan_SetIO(0);
+
+    else {
+        SystemFan_SetIO(state);
+
+        if (state)
+            retval = syspwmval;
+        else
+            retval = SYSFAN_PWM_PERIOD - syspwmval;
+    }
+
+    state = state == 0 ? 1 : 0;
+
 	return retval;
 }
 
 static int32_t SystemFanSense_Work(void) {
-	uint8_t sysfanspeed = 0;
+	uint8_t sysfanspeedPct = 0;
 
 	if (Sensor_IsValid(TC_COLD_JUNCTION)) {
-		float systemp = Sensor_GetTemp(TC_COLD_JUNCTION);
+		int systemp = (int)Sensor_GetTemp(TC_COLD_JUNCTION);
+        int ovenTemp = (int)Sensor_GetTemp(TC_AVERAGE);
 
-		// Sort this out with something better at some point
-		if (systemp > 50.0f) {
-			sysfanspeed = 0xff;
-		} else if (systemp > 45.0f) {
-			sysfanspeed = 0xc0;
-		} else if (systemp > 42.0f) {
-			sysfanspeed = 0x80;
-		} else if (systemp > 40.0f) {
-			sysfanspeed = 0x50;
-		}
+		if (systemp > 35 || ovenTemp > 100)
+            sysfanspeedPct = 100;
+
+        else if (systemp >= 30 || ovenTemp > 50)
+            sysfanspeedPct = 100; // disable soft PWM as it is too much jitter
+
+        else
+            sysfanspeedPct = 0;
+
 	} else {
 		// No sensor, run at full speed as a precaution
-		sysfanspeed = 0xff;
+		sysfanspeedPct = 100;
 	}
 
-	uint32_t temp = SYSFAN_PWM_PERIOD >> 8;
-	temp *= sysfanspeed;
-	if (sysfanspeed == 0xff) {
-		// Make sure we reach 100% duty cycle
-		temp = SYSFAN_PWM_PERIOD;
-	}
-	syspwmval = temp;
+    if (sysfanspeedPct >= 99)
+        syspwmval = SYSFAN_PWM_PERIOD;
+    else if (sysfanspeedPct > 0)
+    {
+        syspwmval = SYSFAN_PWM_PERIOD / 100;
+        syspwmval *= sysfanspeedPct;
+    }
+    else
+        syspwmval = 0;
 
-	Sched_SetState(SYSFANPWM_WORK, 2, 0);
-
-	return TICKS_SECS( 5 );
+	return TICKS_SECS(1);
 }
 
-void SystemFan_Init(void) {
-	printf("\n%s", __FUNCTION__);
-	Sched_SetWorkfunc(SYSFANPWM_WORK, SystemFanPWM_Work);
-	Sched_SetWorkfunc(SYSFANSENSE_WORK, SystemFanSense_Work);
+void SystemFan_SetFullSpeed(unsigned char enabled) {
+    sysfanFullspeed = enabled;
+}
 
-	// Turn on fan briefly at boot to indicate that it actually works
-	syspwmval = SYSFAN_PWM_PERIOD;
-	Sched_SetState(SYSFANPWM_WORK, 2, 0); // Enable PWM task
-	Sched_SetState(SYSFANSENSE_WORK, 1, TICKS_SECS( 2 ) ); // Enable Sense task
+void SystemFan_Init(void)
+{
+    printf("\n%s", __FUNCTION__);
+    Sched_SetWorkfunc(SYSFANPWM_WORK, SystemFanPWM_Work);
+    Sched_SetWorkfunc(SYSFANSENSE_WORK, SystemFanSense_Work);
+
+    // Turn on fan briefly at boot to indicate that it actually works
+    syspwmval = SYSFAN_PWM_PERIOD;
+    Sched_SetState(SYSFANPWM_WORK, 2, 0);               // Enable PWM task
+    Sched_SetState(SYSFANSENSE_WORK, 1, TICKS_SECS(2)); // Enable Sense task
 }

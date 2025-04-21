@@ -6,7 +6,9 @@
 	],
     "settings": {
         "files.associations": {
-            "reflow.h": "c"
+            "reflow.h": "c",
+            "sensor.h": "c",
+            "systemfan.h": "c"
         }
     }
 }

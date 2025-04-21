@@ -31,7 +31,7 @@
    - Visual: Removed dots in graph and added "degrees c" and "s" axis-labels (looks more clear, personal preference)
    - Visual: Main: Renamed manual/bake mode to manual
    - Visual: Setup: Replaced < > to up and down arrow
-   - Visual: Manual: Renamed thermocouple R to FNT (front) and L to BCK (back) and cold juction to PCB
+   - Visual: Manual: Renamed thermocouple R to FNT (front) and L to BCK (back) and cold juction to CPU
    - Visual: Manual: Added : between temperature label/value
    - Visual: Reflow: Renamed RUN to TIME in reflow screen and put on top
    - Visual: Reflow: added degrees symbol in act and set values,
@@ -42,6 +42,10 @@
    - Serial interface 57600 baud instead of 115200 to allow one tool for flashing and terminal using same baud rate
    - Visual: custom logo
    - changed standby temp to 40 instead of 50 degrees
+   - show CPU temp on main screen
+   - added alarm when CPU is overheating
+   - added debug function when pressing F3 on about screen
+   - disabled system fan PWM, too much jitter. toggle between full on and off depending on cpu and oven temperature
  */
 
 #include "LPC214x.h"
@@ -182,7 +186,8 @@ typedef enum eMainMode {
 	MAIN_BAKE,
 	MAIN_SELECT_PROFILE,
 	MAIN_EDIT_PROFILE,
-	MAIN_REFLOW
+	MAIN_REFLOW,
+    MAIN_ALARM
 } MainMode_t;
 
 static int32_t Main_Work(void) {
@@ -378,7 +383,39 @@ static int32_t Main_Work(void) {
             Reflow_SetMode(REFLOW_STANDBY);
 			retval = 0; // Force immediate refresh
 		}
-	} else if (mode == MAIN_ABOUT) {
+    } else if (mode == MAIN_ALARM) {
+        int y = 0;
+        LCD_FB_Clear();
+        LCD_disp_str((uint8_t*)"Temperature ALARM", 17, 0, y, FONT6X6 | INVERT);
+
+        // current temp
+        y += 14;
+        len = snprintf(buf, sizeof(buf), "Back :%3.1f`", Sensor_GetTemp(TC_LEFT));
+        LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
+
+        y += 7;
+        len = snprintf(buf, sizeof(buf), "Front:%3.1f`", Sensor_GetTemp(TC_RIGHT));
+        LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
+
+        y += 7;
+        len = snprintf(buf, sizeof(buf), "CPU:  %3.1f`", Sensor_GetTemp(TC_COLD_JUNCTION));
+        LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
+
+        y += 10;
+
+        if (Sensor_GetTemp(TC_COLD_JUNCTION) > 30.0f) {
+            LCD_disp_str((uint8_t*)"Cooling down to 30`", 19, 0, 64 - 7, FONT6X6 | INVERT);
+        } else {            
+            LCD_disp_str((uint8_t*)"Press S to return", 17, 0, 64 - 7, FONT6X6 | INVERT);
+
+            // Leave setup
+            if (keyspressed & KEY_S) {
+                mode = MAIN_HOME;
+                SystemFan_SetFullSpeed(0);
+                retval = 0; // Force immediate refresh
+            }
+        }
+    } else if (mode == MAIN_ABOUT) {
 		LCD_FB_Clear();
 		LCD_BMPDisplay(logobmp, 0, 0);
 
@@ -388,21 +425,23 @@ static int32_t Main_Work(void) {
 		len = snprintf(buf, sizeof(buf), "%s", Version_GetGitVersion());
 		LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), 64 - 6, FONT6X6);
 
-		//LCD_BMPDisplay(stopbmp, 127 - 17, 0);
-
 		// Leave about with any key.
-		if (keyspressed & KEY_ANY) {
+        if (keyspressed & KEY_F3) {
+            // Debug key, various purpuse
+			mode = MAIN_HOME;
+			retval = 0;
+        } else if (keyspressed & KEY_ANY) {
 			mode = MAIN_HOME;
 			retval = 0; // Force immediate refresh
 		}
 	} else if (mode == MAIN_REFLOW) {
-		uint32_t ticks = RTC_Read();
+        uint32_t ticks = RTC_Read();
 
         if (Reflow_IsRunning())
         {
-		    len = snprintf(buf, sizeof(buf), "%3u", (unsigned int)ticks);
-		    LCD_disp_str((uint8_t*)"TIME", 4, 104, 7, FONT6X6);
-		    LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
+            len = snprintf(buf, sizeof(buf), "%3u", (unsigned int)ticks);
+            LCD_disp_str((uint8_t*)"TIME", 4, 104, 7, FONT6X6);
+            LCD_disp_str((uint8_t*)buf, len, 110, 13, FONT6X6);
 
             len = snprintf(buf, sizeof(buf), "%3u`", Reflow_GetSetpoint());
             LCD_disp_str((uint8_t*)"SET", 3, 110, 21, FONT6X6);
@@ -410,37 +449,36 @@ static int32_t Main_Work(void) {
         }
         else
         {
-		    LCD_disp_str((uint8_t*)"DONE", 4, 104, 7, FONT6X6);
-		    LCD_disp_str((uint8_t*)"    ", 4, 104, 13, FONT6X6);
+            LCD_disp_str((uint8_t*)"DONE", 4, 104, 7, FONT6X6);
+            LCD_disp_str((uint8_t*)"    ", 4, 104, 13, FONT6X6);
 
             len = snprintf(buf, sizeof(buf), "%3.0f`", Sensor_GetTemp(TC_COLD_JUNCTION));
-            LCD_disp_str((uint8_t*)"PCB", 3, 110, 21, FONT6X6);
+            LCD_disp_str((uint8_t*)"CPU", 3, 110, 21, FONT6X6);
             LCD_disp_str((uint8_t*)buf, len, 104, 27, FONT6X6);    
         }
 
-		len = snprintf(buf, sizeof(buf), "%3u`", Reflow_GetActualTemp());
-		LCD_disp_str((uint8_t*)"ACT", 3, 110, 35, FONT6X6);
-		LCD_disp_str((uint8_t*)buf, len, 104, 41, FONT6X6);
+        len = snprintf(buf, sizeof(buf), "%3u`", Reflow_GetActualTemp());
+        LCD_disp_str((uint8_t*)"ACT", 3, 110, 35, FONT6X6);
+        LCD_disp_str((uint8_t*)buf, len, 104, 41, FONT6X6);
 
-		// Abort reflow
-		if (keyspressed & KEY_S) {
-			printf("\nReflow interrupted by keypress\n");
-			mode = MAIN_HOME;
-			Reflow_SetMode(REFLOW_STANDBY);
-			retval = 0; // Force immediate refresh
-		}
+        // Abort reflow
+        if (keyspressed & KEY_S) {
+            printf("\nReflow interrupted by keypress\n");
+            mode = MAIN_HOME;
+            Reflow_SetMode(REFLOW_STANDBY);
+            retval = 0; // Force immediate refresh
+        }
 
         // Reflow done
-		if (Reflow_IsDone()) {
-			printf("\nReflow done\n");
-		    Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
-			Reflow_SetMode(REFLOW_STANDBY);
-			retval = 0; // Force immediate refresh
-		}
+        if (Reflow_IsDone()) {
+            printf("\nReflow done\n");
+            Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(100) * NV_GetConfig(REFLOW_BEEP_DONE_LEN));
+            Reflow_SetMode(REFLOW_STANDBY);
+            retval = 0; // Force immediate refresh
+        }
 
         len = snprintf(buf, sizeof(buf), "%s", Reflow_GetProfileName());
         LCD_disp_str((uint8_t*)buf, len, 13, 0, FONT6X6);
-
 
 	} else if (mode == MAIN_SELECT_PROFILE) {
 		int curprofile = Reflow_GetProfileIdx();
@@ -579,9 +617,9 @@ static int32_t Main_Work(void) {
 		}
 
 		if (Sensor_IsValid(TC_COLD_JUNCTION)) {
-			len = snprintf(buf, sizeof(buf), "PCB:%3.1f`", Sensor_GetTemp(TC_COLD_JUNCTION));
+			len = snprintf(buf, sizeof(buf), "CPU:%3.1f`", Sensor_GetTemp(TC_COLD_JUNCTION));
 		} else {
-			len = snprintf(buf, sizeof(buf), "PCB SENS NOT PRESENT");
+			len = snprintf(buf, sizeof(buf), "CPU SENS NOT PRESENT");
 		}
 		y = 50;
 		LCD_disp_str((uint8_t*)buf, len, 0, y, FONT6X6);
@@ -679,8 +717,11 @@ static int32_t Main_Work(void) {
 		len = snprintf(buf, sizeof(buf), "%s", Reflow_GetProfileName());
 		LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), 8 * 6, FONT6X6 | INVERT);
 
-		len = snprintf(buf,sizeof(buf), "OVEN TEMPERATURE %d`", Reflow_GetActualTemp());
-		LCD_disp_str((uint8_t*)buf, len, LCD_ALIGN_CENTER(len), 64 - 6, FONT6X6);
+		len = snprintf(buf,sizeof(buf), "OVEN:%d`", Reflow_GetActualTemp());
+		LCD_disp_str((uint8_t*)buf, len, 0, 64 - 7, FONT6X6);
+
+		len = snprintf(buf,sizeof(buf), "CPU:%3.0f`", Sensor_GetTemp(TC_COLD_JUNCTION));
+		LCD_disp_str((uint8_t*)buf, len, LCD_CENTER, 64 - 7, FONT6X6);
 
 		// Make sure reflow complete beep is silenced when pressing any key
 		if (keyspressed) {
@@ -725,6 +766,18 @@ static int32_t Main_Work(void) {
 			retval = 0; // Force immediate refresh
 		}
 	}
+
+    // overheating check
+    if (mode != MAIN_ALARM && Sensor_GetTemp(TC_COLD_JUNCTION) > 55.0f) {
+        printf("\nTemperature alarm\n");
+        timer = 0; // Reset for next time
+        Reflow_SetBakeTimer(0);
+        Reflow_SetMode(REFLOW_STANDBY);
+        SystemFan_SetFullSpeed(1);
+        mode = MAIN_ALARM;
+        Buzzer_Beep(BUZZ_1KHZ, 255, TICKS_MS(5000));
+        retval = 0; // Force immediate refresh
+    }
 
 	LCD_FB_Update();
 
