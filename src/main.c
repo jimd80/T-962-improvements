@@ -50,7 +50,7 @@ extern uint8_t f3editbmp[];
 
 // No version.c file generated for LPCXpresso builds, fall back to this
 __attribute__((weak)) const char* Version_GetGitVersion(void) {
-	return "v0.5.2d"; // add letter suffix to indicate custom version based on upstream version
+	return "v0.5.2f"; // add letter suffix to indicate custom version based on upstream version
 }
 
 static char* format_about = \
