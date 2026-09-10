@@ -14,36 +14,7 @@
  * GNU General Public License for more details.
 
  * You should have received a copy of the GNU General Public License
- * along with this program.  If not, see <http://www.gnu.org/licenses/>.
- 
- Jim Mods:
-   - Added vscode files and flash script
-   - Bugfix: tc offset and gain only effective after start reflow / reset
-   - Bugfix: manual mode not reset after re-entry (pressed stop)
-   - Bugfix: setting TC gain <= -10 causes crash (reboot) due to format (use 00.0 instead of 0.00)
-   - Improvement: Slower 230v pwm (fan+heat) 2 Hz instead of 5 Hz for less net noise
-   - Improvement: show TC temp during setup for easier tuning of tc gain and offset
-   - Improvement: TC gain extended to -50..+50 instead of -25..+25
-   - Improvement: Bake mode goes back to preheat if regulation is 1 degree off. Changes to 5 degrees to allow some regulation swing
-   - Visual: Use same font in bitmaps (especially smaller S-button)
-   - Visual: Removed dots in graph and added "degrees c" and "s" axis-labels (looks more clear, personal preference)
-   - Visual: Main: Renamed manual/bake mode to manual
-   - Visual: Setup: Replaced < > to up and down arrow
-   - Visual: Manual: Renamed thermocouple R to FNT (front) and L to BCK (back) and cold juction to CPU
-   - Visual: Manual: Added : between temperature label/value
-   - Visual: Reflow: Renamed RUN to TIME in reflow screen and put on top
-   - Visual: Reflow: added degrees symbol in act and set values,
-   - Visual: Reflow: Added progress bar,
-   - Added popular Chipquick profiles (TS series, without need for refridgeration)
-   - keep reflow screen open when done to check chart
-   - Visual: Removed [S] from about screen
-   - Serial interface 57600 baud instead of 115200 to allow one tool for flashing and terminal using same baud rate
-   - Visual: custom logo
-   - changed standby temp to 40 instead of 50 degrees
-   - show CPU temp on main screen
-   - added alarm when CPU is overheating
-   - added debug function when pressing F3 on about screen
-   - disabled system fan PWM, too much jitter. toggle between full on and off depending on cpu and oven temperature
+ * along with this program.  If not, see <http://www.gnu.org/licenses/>. 
  */
 
 #include "LPC214x.h"
@@ -79,7 +50,7 @@ extern uint8_t f3editbmp[];
 
 // No version.c file generated for LPCXpresso builds, fall back to this
 __attribute__((weak)) const char* Version_GetGitVersion(void) {
-	return "v0.5.2d"; // d = d2s modified version with chipquick profiles
+	return "v0.5.2d"; // add letter suffix to indicate custom version based on upstream version
 }
 
 static char* format_about = \
